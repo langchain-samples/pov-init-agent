@@ -1,7 +1,7 @@
-"""Generate seed traces by running the agent over the seed topics.
+"""Generate seed traces by running the agent over the seed resume/JD pairs.
 
 Running the compiled graph with tracing enabled auto-creates the tracing project
-and records a multi-step trace per topic. We then read back the root run ids so
+and records a multi-step trace per pair. We then read back the root run ids so
 the bootstrap can drop a few into the annotation queue.
 """
 
@@ -11,7 +11,7 @@ import time
 from langchain_core.tracers.langchain import wait_for_all_tracers
 
 from pov_agent.config import PROJECT
-from pov_agent.langsmith.seed_data import SEED_TOPICS
+from pov_agent.langsmith.seed_data import SEED_PAIRS
 
 
 def generate_traces(client, n: int = 10) -> list[str]:
@@ -23,9 +23,15 @@ def generate_traces(client, n: int = 10) -> list[str]:
     from pov_agent.agent import build_agent
 
     agent = build_agent()
-    for item in SEED_TOPICS[:n]:
+    for item in SEED_PAIRS[:n]:
+        prompt = (
+            f"Assess this candidate for the role.\n\n"
+            f"JOB TITLE: {item['job_title']}\n\n"
+            f"JOB DESCRIPTION:\n{item['job_description']}\n\n"
+            f"RESUME:\n{item['resume']}"
+        )
         agent.invoke(
-            {"messages": [{"role": "user", "content": f"Write a report on: {item['topic']}"}]},
+            {"messages": [{"role": "user", "content": prompt}]},
             config={"configurable": {}, "metadata": {"source": "bootstrap-seed"}},
         )
 

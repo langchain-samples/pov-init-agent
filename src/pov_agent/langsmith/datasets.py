@@ -1,7 +1,7 @@
-"""Create the evaluation dataset from the seed topics. Idempotent."""
+"""Create the evaluation dataset from the seed resume/JD pairs. Idempotent."""
 
 from pov_agent.config import DATASET_NAME
-from pov_agent.langsmith.seed_data import SEED_TOPICS
+from pov_agent.langsmith.seed_data import SEED_PAIRS
 
 
 def populate_dataset(client) -> str:
@@ -13,17 +13,21 @@ def populate_dataset(client) -> str:
     else:
         dataset = client.create_dataset(
             dataset_name=DATASET_NAME,
-            description="Golden report topics with the points each report must cover.",
+            description="Golden resume/job-description pairs with the points each match review must address.",
         )
 
     client.create_examples(
         dataset_id=dataset.id,
         examples=[
             {
-                "inputs": {"topic": item["topic"]},
-                "outputs": {"must_cover": item["must_cover"]},
+                "inputs": {
+                    "job_title": item["job_title"],
+                    "job_description": item["job_description"],
+                    "resume": item["resume"],
+                },
+                "outputs": {"must_address": item["must_address"]},
             }
-            for item in SEED_TOPICS
+            for item in SEED_PAIRS
         ],
     )
     return str(dataset.id)

@@ -2,6 +2,7 @@
 .env
 *.key
 *.pem
+*.crt
 *credentials*
 
 # Python

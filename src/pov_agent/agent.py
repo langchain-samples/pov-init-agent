@@ -1,4 +1,4 @@
-"""The report-writer deep agent.
+"""The resume-to-job match deep agent.
 
 Filesystem backend = a CompositeBackend that routes:
   - the agent's durable files (system prompt, /AGENTS.md memory, /skills/) to the
