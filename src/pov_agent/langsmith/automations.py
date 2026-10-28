@@ -4,7 +4,7 @@ Rules have no Python SDK wrapper, so we POST to /runs/rules via the Client's
 authenticated request helper (it adds the api key + workspace headers for us).
 
 Two rules, the two most useful for a trial:
-  1. Sample live match reviews into the human review (annotation) queue.
+  1. Sample live answers into the human review (annotation) queue.
   2. Grow the eval dataset from production traffic.
 """
 
@@ -26,7 +26,7 @@ def create_automations(client, project_id: str, queue_id: str, dataset_id: str) 
     project_id, queue_id, dataset_id = str(project_id), str(queue_id), str(dataset_id)
     rules = [
         {
-            "display_name": "POC: route sampled match reviews to review queue",
+            "display_name": "POC: route sampled answers to review queue",
             "sampling_rate": 0.5,
             "session_id": project_id,
             "filter": "eq(is_root, true)",

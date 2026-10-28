@@ -33,7 +33,7 @@ def _require_keys() -> None:
 
 
 def _upload_online_evaluator() -> None:
-    """Upload the code evaluator that scores every live trace's structure."""
+    """Upload the code evaluator that checks every live answer cites its sources."""
     cmd = [
         "langsmith", "evaluator", "upload", str(_ONLINE_EVAL_FILE),
         "--function", "perform_eval",
@@ -53,23 +53,23 @@ def main() -> None:
     client = Client()
     web = getattr(client, "_web_url", None) or "https://smith.langchain.com"
 
-    print("1/7 Context Hub — pushing system prompt, AGENTS.md, and the match-rubric skill…")
+    print("1/7 Context Hub — pushing system prompt, AGENTS.md, and the docs-answer-guide skill…")
     push_context_hub(client)
 
-    print("2/7 Dataset — creating golden resume/job-description pairs…")
+    print("2/7 Dataset — creating golden docs questions + reference answers…")
     dataset_id = populate_dataset(client)
 
-    print(f"3/7 Traces — running the agent over seed pairs into project '{PROJECT}'…")
+    print(f"3/7 Traces — running the agent over seed questions into project '{PROJECT}'…")
     run_ids = generate_traces(client)
     print(f"     captured {len(run_ids)} root run(s)")
 
     print("4/7 Annotation queue — creating rubric and queueing runs for review…")
     queue = ensure_queue(client, run_ids)
 
-    print("5/7 Offline eval — scoring the agent (structure + quality + fairness judges + counterfactual)…")
+    print("5/7 Offline eval — scoring the agent (openevals correctness + fairness judges, cites-sources)…")
     run_offline_eval(client)
 
-    print("6/7 Online evaluator — attaching the structure evaluator to live traces…")
+    print("6/7 Online evaluator — attaching the cites-sources evaluator to live traces…")
     _upload_online_evaluator()
 
     print("7/7 Automations — adding rules (queue routing + dataset growth)…")
@@ -80,7 +80,7 @@ def main() -> None:
     print(f"   {web}")
     print(f"   • Tracing project '{PROJECT}'  — traces + the online evaluator + automations")
     print("   • Datasets & Experiments        — the eval dataset and the offline experiment")
-    print("   • Annotation Queues             — match reviews waiting for human review")
+    print("   • Annotation Queues             — answers waiting for expert review")
     print("   • Context Hub                   — the agent repo (prompt, AGENTS.md, skill)")
 
 

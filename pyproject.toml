@@ -1,7 +1,7 @@
 [project]
 name = "pov-init-agent"
 version = "0.1.0"
-description = "Pre-populate a LangSmith workspace with a working resume-to-job match deep agent, traces, a dataset, evaluators (offline + online, including bias/fairness), an annotation queue, and automations."
+description = "Pre-populate a LangSmith workspace with a working platform docs-assistant deep agent, traces, a dataset, offline LLM-as-judge evaluators (correctness + fairness) with a CI eval gate, an online evaluator, an annotation queue, and automations."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -14,10 +14,12 @@ dependencies = [
     "langchain-openai>=0.2",
     "python-dotenv>=1.0",
     "httpx>=0.27",
+    "openevals>=0.2.0",
 ]
 
 [project.scripts]
 pov-bootstrap = "pov_agent.langsmith.bootstrap:main"
+pov-eval-gate = "pov_agent.langsmith.ci_gate:main"
 
 [tool.uv]
 package = true

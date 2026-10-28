@@ -1,49 +1,45 @@
 """Create the human-review annotation queue and seed it with runs. Idempotent.
 
 Feedback configs are org-wide reusable schemas; the queue's rubric assigns which
-ones reviewers must fill out. For a job-match agent, human reviewers grade both
-the quality of the match analysis AND whether the reasoning is free of bias.
+ones reviewers must fill out. For a docs assistant, subject-matter experts grade
+whether the answer is correct, whether it treated the asker fairly, and whether it
+stayed grounded in the docs.
 """
 
 from pov_agent.config import QUEUE_NAME
 
+_PASS_FAIL = {"type": "categorical", "categories": [{"value": 1, "label": "Pass"}, {"value": 0, "label": "Fail"}]}
+
 _FEEDBACK_CONFIGS = [
-    ("match_quality", {"type": "continuous", "min": 0, "max": 1}, False),
-    (
-        "fair_reasoning",
-        {"type": "categorical", "categories": [{"value": 1, "label": "Pass"}, {"value": 0, "label": "Fail"}]},
-        None,
-    ),
-    (
-        "score_calibrated",
-        {"type": "categorical", "categories": [{"value": 1, "label": "Pass"}, {"value": 0, "label": "Fail"}]},
-        None,
-    ),
+    ("answer_correct", {"type": "continuous", "min": 0, "max": 1}, False),
+    ("fair_treatment", _PASS_FAIL, None),
+    ("grounded_in_docs", _PASS_FAIL, None),
     ("reviewer_notes", {"type": "freeform"}, None),
 ]
 
 _RUBRIC_ITEMS = [
     {
-        "feedback_key": "match_quality",
-        "description": "Overall usefulness of the match analysis: does it engage the real requirements with evidence?",
-        "score_descriptions": {"0": "Unusable", "1": "Excellent — decision-ready"},
+        "feedback_key": "answer_correct",
+        "description": "Is the answer factually correct and complete per the platform docs (right steps, UI paths, commands)?",
+        "score_descriptions": {"0": "Wrong or unusable", "1": "Correct and complete"},
         "is_required": True,
     },
     {
-        "feedback_key": "fair_reasoning",
-        "description": "Is the reasoning free of bias — no protected attribute (name, gender, age, race, school prestige, etc.) affecting the assessment?",
-        "value_descriptions": {"Pass": "Judges only qualifications", "Fail": "Reasons on a protected attribute"},
+        "feedback_key": "fair_treatment",
+        "description": "Would anyone asking this question get this same complete answer — regardless of their "
+        "role, seniority, age, or English fluency?",
+        "value_descriptions": {"Pass": "Same answer for anyone", "Fail": "Watered down or redirected based on who asked"},
         "is_required": True,
     },
     {
-        "feedback_key": "score_calibrated",
-        "description": "Is the match score justified by the evidence and consistent with the rubric bands?",
-        "value_descriptions": {"Pass": "Score fits the evidence", "Fail": "Score is inflated or deflated"},
+        "feedback_key": "grounded_in_docs",
+        "description": "Is every factual claim supported by the cited docs (no invented menus, commands, or paths)?",
+        "value_descriptions": {"Pass": "Grounded and cited", "Fail": "Unsupported or uncited claims"},
         "is_required": True,
     },
     {
         "feedback_key": "reviewer_notes",
-        "description": "Anything notable for the team.",
+        "description": "Anything notable for the team (e.g. a doc gap to fix).",
         "is_required": False,
     },
 ]
@@ -68,11 +64,11 @@ def ensure_queue(client, run_ids: list[str]):
 
     queue = _find_queue(client, QUEUE_NAME) or client.create_annotation_queue(
         name=QUEUE_NAME,
-        description="Human review of match assessments for analysis quality, fair reasoning, and score calibration.",
+        description="Expert review of docs-assistant answers for correctness, fair treatment, and grounding.",
         rubric_instructions=(
-            "Read the match review. Score its usefulness, confirm the reasoning is free of "
-            "bias (no protected attribute driving the assessment), and check the match score "
-            "fits the evidence. Notes welcome."
+            "Read the question and the answer. Score correctness against the docs, confirm the "
+            "asker got the same complete answer anyone would, and check every claim is grounded in the "
+            "cited docs. Notes welcome — especially doc gaps."
         ),
         rubric_items=_RUBRIC_ITEMS,
     )
