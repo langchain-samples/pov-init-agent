@@ -14,6 +14,10 @@ __pycache__/
 dist/
 build/
 
+# Cached synthetic caller audio (regenerated on demand)
+src/pov_agent/langsmith/voice_fixtures/
+bootstrap.log
+
 # Tooling
 .langgraph_api/
 .ruff_cache/

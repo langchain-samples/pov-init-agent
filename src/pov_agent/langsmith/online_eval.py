@@ -2,67 +2,70 @@
 
 Uploaded with:
     langsmith evaluator upload online_eval.py --function perform_eval \
-        --name match-structure --project <project> --sampling-rate 1.0
+        --name channel-format --project <project> --sampling-rate 1.0
+
+Scores whether each live reply fits its channel (voice = speakable, chat =
+concise). It reads the channel from the root run's inputs ({"channel": ...}).
 
 Constraints of the online code-evaluator sandbox: the function takes exactly one
-positional ``run`` argument, has NO network access, and may use only the standard
-library plus numpy/pandas/scipy/scikit-learn/jsonschema. It therefore CANNOT import
-this repo, so the structure + score-parsing logic below is duplicated from
-``evaluators.py``.
+positional ``run`` argument, has NO network access, may use only the standard
+library plus numpy/pandas/scipy/scikit-learn/jsonschema, and does not keep
+module-level helpers in scope at call time. It therefore CANNOT import this
+repo, so the rule below is duplicated from ``score_channel_format()`` in
+``evaluators.py`` and everything lives inside ``perform_eval``.
+
+Note: online evaluators see traces AFTER SDK masking, so this evaluator never
+touches raw customer data.
 
 # ponytail: deliberate duplication — the sandbox forbids importing repo code.
-# If you change the structure rule here, change score_review_structure() too.
+# If you change the channel rules here, change score_channel_format() too.
 """
-
-import re
-
-EXPECTED_SECTIONS = [
-    "match summary",
-    "strengths",
-    "gaps",
-    "recommendation",
-]
-MIN_WORDS = 120
-_SCORE_RE = re.compile(r"match\s*score\s*[:=]\s*([01](?:\.\d+)?)", re.IGNORECASE)
-
-
-def _parse_match_score(review):
-    match = _SCORE_RE.search(review or "")
-    if not match:
-        return None
-    try:
-        value = float(match.group(1))
-    except ValueError:
-        return None
-    return value if 0.0 <= value <= 1.0 else None
-
-
-def _final_review_text(run) -> str:
-    """Pull the final review out of a serialized run's outputs."""
-    outputs = (run or {}).get("outputs") or {}
-    messages = outputs.get("messages") or []
-    for message in reversed(messages):
-        content = message.get("content") if isinstance(message, dict) else None
-        if isinstance(content, list):  # content blocks
-            content = " ".join(
-                block.get("text", "")
-                for block in content
-                if isinstance(block, dict) and block.get("type") == "text"
-            )
-        if isinstance(content, str) and content.strip():
-            return content
-    if isinstance(outputs.get("review"), str):
-        return outputs["review"]
-    return ""
 
 
 def perform_eval(run):
-    review = _final_review_text(run)
-    text = review.lower()
-    present = sum(1 for s in EXPECTED_SECTIONS if s in text)
-    score = present / len(EXPECTED_SECTIONS)
-    if _parse_match_score(review) is None:
-        score *= 0.5
-    if len(review.split()) < MIN_WORDS:
-        score *= 0.5
-    return {"match_structure": round(score, 3)}
+    import re
+
+    voice_max_words = 75
+    chat_max_words = 200
+    markdown_re = re.compile(
+        r"(^\s*#{1,6}\s)|(\*\*)|(^\s*[-*•]\s)|(^\s*\d+[.)]\s)|(`)|(\|.*\|)", re.MULTILINE
+    )
+    url_re = re.compile(r"https?://|www\.", re.IGNORECASE)
+    digit_run_re = re.compile(r"\d{3,}")
+
+    def final_reply(run):
+        outputs = (run or {}).get("outputs") or {}
+        for message in reversed(outputs.get("messages") or []):
+            if not isinstance(message, dict):
+                continue
+            if message.get("type") not in (None, "ai", "AIMessage", "AIMessageChunk"):
+                continue
+            if message.get("tool_calls"):
+                continue
+            content = message.get("content")
+            if isinstance(content, list):
+                content = " ".join(
+                    b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
+                )
+            if isinstance(content, str) and content.strip():
+                return content
+        return outputs.get("response", "") if isinstance(outputs.get("response"), str) else ""
+
+    inputs = (run or {}).get("inputs") or {}
+    channel = inputs.get("channel") or "chat"
+    text = final_reply(run)
+    if not text.strip():
+        return {"channel_format": 0.0}
+
+    words = len(text.split())
+    if channel == "voice":
+        checks = [
+            not markdown_re.search(text),
+            not url_re.search(text),
+            not digit_run_re.search(text),
+            ">" not in text,
+            words <= voice_max_words,
+        ]
+    else:
+        checks = [words <= chat_max_words]
+    return {"channel_format": round(sum(checks) / len(checks), 3)}

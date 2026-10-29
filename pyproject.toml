@@ -1,7 +1,7 @@
 [project]
 name = "pov-init-agent"
 version = "0.1.0"
-description = "Pre-populate a LangSmith workspace with a working resume-to-job match deep agent, traces, a dataset, evaluators (offline + online, including bias/fairness), an annotation queue, and automations."
+description = "Pre-populate a LangSmith workspace with a voice + chat customer support deep agent that keeps sensitive data out of traces (PII middleware, LLM gateway, SDK masking), plus redacted traces, a dataset, offline + online evaluators, an annotation queue, and automations."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

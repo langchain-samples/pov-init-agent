@@ -1,35 +1,33 @@
 """Offline evaluation: run the agent over the golden dataset and score it.
 
-Produces an experiment under the dataset with four scores per example:
-  - ``match_structure``          — deterministic code eval (sections + score present)
-  - ``match_quality``            — LLM-as-judge vs. the reference must-address points
-  - ``reasoning_unbiased``       — LLM-as-judge fairness check on the agent's own text
-  - ``counterfactual_fairness``  — re-runs the agent on protected-attribute-swapped
-                                   variants of the same resume and checks score stability
+Produces an experiment under the dataset with seven scores per example
+(``guardrail_upheld`` on adversarial turns, ``stayed_on_task`` on the rest):
+  - ``channel_format``          — deterministic: speakable on voice, concise on chat
+  - ``no_sensitive_data_leak``  — deterministic: no raw PII/ACR values in the reply
+  - ``action_correctness``      — deterministic: expected actions taken, forbidden ones not
+  - ``resolution_quality``      — LLM-as-judge vs. the reference must-address points
+  - ``privacy_compliant``       — LLM-as-judge vs. the privacy policy + per-turn expectation
+  - ``guardrail_upheld`` /      — guardrail judge (Prompt Hub): did an adversarial turn
+    ``stayed_on_task``            break G1–G6? did a legitimate turn get over-refused?
+  - ``channel_parity``          — replays the turn on the other channel; same actions?
 
-The last one is what "checks the agent's efficacy" on fairness: a discerning matcher
-scores the qualifications the same regardless of a candidate's name or pronouns.
+The client passed in is the masking client from ``privacy.build_tracing_client``,
+so experiment runs and judge calls are scrubbed before they are stored.
 """
 
 from langsmith import evaluate
 
 from pov_agent.config import DATASET_NAME
 from pov_agent.langsmith.evaluators import (
-    make_counterfactual_fairness_evaluator,
-    quality_evaluator,
-    reasoning_bias_evaluator,
-    structure_evaluator,
+    action_correctness_evaluator,
+    channel_format_evaluator,
+    make_channel_parity_evaluator,
+    privacy_policy_evaluator,
+    resolution_quality_evaluator,
+    sensitive_data_leak_evaluator,
 )
-
-
-def _final_text(result: dict) -> str:
-    messages = result.get("messages", [])
-    if not messages:
-        return ""
-    content = messages[-1].content
-    if isinstance(content, list):
-        return " ".join(b.get("text", "") for b in content if isinstance(b, dict))
-    return content or ""
+from pov_agent.langsmith.guardrails import guardrail_evaluator
+from pov_agent.voice import run_voice_or_text_turn
 
 
 def run_offline_eval(client):
@@ -38,29 +36,23 @@ def run_offline_eval(client):
     agent = build_agent()
 
     def target(inputs: dict) -> dict:
-        prompt = (
-            f"Assess this candidate for the role.\n\n"
-            f"JOB TITLE: {inputs['job_title']}\n\n"
-            f"JOB DESCRIPTION:\n{inputs['job_description']}\n\n"
-            f"RESUME:\n{inputs['resume']}"
-        )
-        result = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
-        return {"review": _final_text(result)}
-
-    # The counterfactual evaluator re-runs the agent several times per example,
-    # so it's the expensive one; it shares the same agent instance.
-    counterfactual_fairness_evaluator = make_counterfactual_fairness_evaluator(agent)
+        # Voice examples go through real audio: synthesized caller audio (cached)
+        # → speech-to-text → agent → text-to-speech. Channel parity replays as text.
+        return run_voice_or_text_turn(agent, inputs, metadata={"source": "offline-eval"})
 
     return evaluate(
         target,
         data=DATASET_NAME,
         evaluators=[
-            structure_evaluator,
-            quality_evaluator,
-            reasoning_bias_evaluator,
-            counterfactual_fairness_evaluator,
+            channel_format_evaluator,
+            sensitive_data_leak_evaluator,
+            action_correctness_evaluator,
+            resolution_quality_evaluator,
+            privacy_policy_evaluator,
+            guardrail_evaluator,                    # Prompt Hub judge: guardrail_upheld / stayed_on_task
+            make_channel_parity_evaluator(agent),  # re-runs the agent once per example
         ],
         experiment_prefix="pov-offline",
-        max_concurrency=1,  # the agent shares a writable Context Hub memory backend
+        max_concurrency=2,
         client=client,
     )
